@@ -1,0 +1,4 @@
+UserName,GivenName,FamilyName,DisplayName,Email,Groups,KiroTier
+jsmith,John,Smith,John Smith,jsmith@example.com,KiroUsers,Kiro Pro
+jdoe,Jane,Doe,Jane Doe,jdoe@example.com,"KiroUsers,KiroAdmins",Kiro Pro+
+bwilson,Bob,Wilson,Bob Wilson,bwilson@example.com,KiroUsers,Kiro Power

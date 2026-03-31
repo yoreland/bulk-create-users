@@ -1,3 +1,16 @@
+# Browser auth state (contains session tokens)
+aws-auth.json
+*.auth.json
+
+# Script output reports
+report.json
+
+# Exported data (may contain PII)
+Kiro Subscriptions List*.csv
+identity-store-*.json
+kiro-subscriptions*.csv
+enriched_users.csv
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
