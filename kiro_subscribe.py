@@ -15,6 +15,7 @@ import csv
 import json
 import logging
 import sys
+import time
 import urllib.error
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -76,10 +77,12 @@ def create_assignment(
     credentials,
     region: str,
     principal_type: str = "USER",
+    max_retries: int = 5,
 ) -> tuple[bool, str]:
     """
     Call AmazonQDeveloperService.CreateAssignment to subscribe a user or group.
 
+    Retries with exponential backoff on ThrottlingException (HTTP 429).
     Returns (success, error_message).
     """
     url = f"https://codewhisperer.{region}.amazonaws.com/"
@@ -93,24 +96,34 @@ def create_assignment(
         "X-Amz-Target": "AmazonQDeveloperService.CreateAssignment",
     }
 
-    request = botocore.awsrequest.AWSRequest(
-        method="POST", url=url, data=body, headers=headers,
-    )
-    signer = botocore.auth.SigV4Auth(credentials, "q", region)
-    signer.add_auth(request)
+    for attempt in range(max_retries + 1):
+        request = botocore.awsrequest.AWSRequest(
+            method="POST", url=url, data=body, headers=headers,
+        )
+        signer = botocore.auth.SigV4Auth(credentials, "q", region)
+        signer.add_auth(request)
 
-    req = urllib.request.Request(
-        url, data=body.encode(), headers=dict(request.headers), method="POST",
-    )
-    try:
-        resp = urllib.request.urlopen(req, timeout=30)
-        resp.read()
-        return True, ""
-    except urllib.error.HTTPError as exc:
-        error_body = exc.read().decode()
-        return False, f"HTTP {exc.code}: {error_body}"
-    except Exception as exc:
-        return False, str(exc)
+        req = urllib.request.Request(
+            url, data=body.encode(), headers=dict(request.headers), method="POST",
+        )
+        try:
+            resp = urllib.request.urlopen(req, timeout=30)
+            resp.read()
+            return True, ""
+        except urllib.error.HTTPError as exc:
+            error_body = exc.read().decode()
+            if exc.code == 429 and attempt < max_retries:
+                delay = min(30 * 2 ** attempt, 300)
+                logging.warning(
+                    "Throttled (attempt %d/%d), retrying in %ds...",
+                    attempt + 1, max_retries, delay,
+                )
+                time.sleep(delay)
+                continue
+            return False, f"HTTP {exc.code}: {error_body}"
+        except Exception as exc:
+            return False, str(exc)
+    return False, "Max retries exceeded"
 
 
 def get_identity_store_id(session: boto3.Session, region: str | None = None) -> str:

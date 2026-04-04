@@ -667,6 +667,8 @@ def cmd_create_users(args: argparse.Namespace) -> None:
         print(f"  Sent   : {len(succeeded)}")
         print(f"  Failed : {len(reset_failed)}")
         print("=" * 60)
+        print("\n⚠️  Password reset links expire in 1 hour.")
+        print("   If a user misses the window, re-run: idc_manager.py reset-password")
 
         if reset_failed:
             print("\nFailed password resets:")
@@ -739,6 +741,8 @@ def cmd_reset_password(args: argparse.Namespace) -> None:
     print(f"  Sent   : {len(succeeded)}")
     print(f"  Failed : {len(failed)}")
     print("=" * 60)
+    print("\n⚠️  Password reset links expire in 1 hour.")
+    print("   If a user misses the window, re-run: idc_manager.py reset-password")
 
     if failed:
         print("\nFailed users:")

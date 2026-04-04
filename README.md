@@ -87,7 +87,7 @@ python idc_manager.py create-users users.csv \
   --reset-password
 ```
 
-Users who already exist are skipped. The `--reset-password` flag sends a password setup email to each newly created user immediately after creation.
+Users who already exist are skipped. The `--reset-password` flag sends a password setup email to each newly created user immediately after creation. **The password reset link expires in 1 hour.** If a user misses the window, re-run `idc_manager.py reset-password` to send a new link.
 
 ### Step 3: Subscribe to Kiro
 
@@ -212,7 +212,7 @@ This creates all groups, users, and memberships in the target Identity Store. Ex
 
 **2b. Send Password Reset Emails**:
 
-Users created via API don't receive a password email. Send one to each user in the target account:
+Users created via API don't receive a password email. Send one to each user in the target account. **The password reset link expires in 1 hour.** If a user misses the window, re-run this command to send a new link:
 
 ```bash
 python idc_manager.py reset-password \
