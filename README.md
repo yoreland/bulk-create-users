@@ -1,6 +1,19 @@
 # Kiro Subscription & Identity Center Manager
 
-Manage AWS Identity Center users and Kiro subscriptions at scale -- bulk import, password reset, and cross-account migration, all via direct API calls.
+Manage AWS Identity Center users and Kiro subscriptions at scale -- bulk import, password reset, subscription management (add/upgrade/downgrade/remove), and cross-account migration, all via direct API calls.
+
+## ✨ Enhanced Features
+
+This fork adds complete Kiro subscription lifecycle management:
+
+- ✅ **Subscribe** - Add new subscriptions or upgrade/downgrade existing ones (`kiro_subscribe.py`)
+- ✅ **Unsubscribe** - Remove subscriptions (`kiro_unsubscribe.py`)
+- ✅ **Query Status** - Export subscription details (`idc_manager.py export-subscriptions`)
+
+Key improvements:
+- Uses `UpdateAssignment` API (supports create/upgrade/downgrade in one call)
+- Implements `DeleteAssignment` API for subscription removal
+- Proper SigV4 signing with service name `q`
 
 ## Use Cases
 
@@ -18,6 +31,12 @@ You have a list of users (e.g. a team roster) and want to:
 You have Kiro set up in one AWS account and want to replicate the entire setup (Identity Store users, groups, memberships, and Kiro subscriptions) to another account.
 
 **See: [Migration Workflow](#use-case-2-migration-workflow)**
+
+### Use Case 3: Manage Subscription Lifecycle
+
+Upgrade, downgrade, or remove Kiro subscriptions for existing users.
+
+**See: [Subscription Management](#subscription-management)**
 
 ## Prerequisites
 
@@ -44,7 +63,8 @@ pip install -r requirements.txt
 | `idc_manager.py export-subscriptions` | Export Kiro subscriptions with enriched user details |
 | `idc_manager.py export-store` | Export all users, groups, memberships from an Identity Store |
 | `idc_manager.py import-store` | Import users, groups, memberships into another Identity Store |
-| `kiro_subscribe.py` | Subscribe users to Kiro tiers (Pro, Pro+, Power) |
+| `kiro_subscribe.py` | Subscribe users to Kiro tiers (Pro, Pro+, Power); also upgrade/downgrade existing subscriptions |
+| `kiro_unsubscribe.py` | **NEW** - Remove Kiro subscriptions from users |
 | `kiro_migrate.py` | **One-command migration** -- automates all 5 steps |
 
 ---
@@ -273,6 +293,64 @@ python kiro_subscribe.py \
 
 ---
 
+## Subscription Management
+
+### Upgrade Subscriptions
+
+Upgrade existing users to a higher tier:
+
+```bash
+# Upgrade specific users to Pro+
+python kiro_subscribe.py --csv users.csv --tier "pro+" --region us-east-1
+
+# Upgrade a single user
+python kiro_subscribe.py --csv users.csv --tier power --region us-east-1
+```
+
+**Note**: `kiro_subscribe.py` now uses `UpdateAssignment` API which handles both new subscriptions and upgrades/downgrades automatically. No need for `--force` flag.
+
+### Downgrade Subscriptions
+
+Downgrade users to a lower tier:
+
+```bash
+# Downgrade users to Pro
+python kiro_subscribe.py --csv users.csv --tier pro --region us-east-1
+```
+
+### Remove Subscriptions
+
+Remove Kiro subscriptions from users:
+
+```bash
+# Preview removal (dry-run)
+python kiro_unsubscribe.py --csv users.csv --region us-east-1 --dry-run
+
+# Remove subscriptions
+python kiro_unsubscribe.py --csv users.csv --region us-east-1
+
+# Remove subscription for a single user
+python kiro_unsubscribe.py --username jsmith --region us-east-1
+```
+
+**Important**: Deletion enters "pending removal" state and becomes effective at the end of the billing month.
+
+### Query Subscription Status
+
+Export all current subscriptions with user details:
+
+```bash
+python idc_manager.py export-subscriptions --region us-east-1 -o subscriptions.csv
+```
+
+The output CSV includes:
+- User details (name, email, groups)
+- Subscription tier (Kiro Pro, Pro+, Power)
+- Status (ACTIVE, PENDING, CANCELLED)
+- Activation date
+
+---
+
 ## Kiro Tiers
 
 | Tier Name | CLI Value | CSV Value | Price | Credits |
@@ -296,15 +374,21 @@ python idc_manager.py export-subscriptions --help
 python idc_manager.py export-store --help
 python idc_manager.py import-store --help
 python kiro_subscribe.py --help
+python kiro_unsubscribe.py --help
 python kiro_migrate.py --help
 ```
 
 ## Notes
 
-- **Idempotent**: All operations skip existing resources (users, groups, memberships, subscriptions).
-- **Parallel**: `reset-password` and `kiro_subscribe.py` support `--workers` for parallel execution (default: 5).
+- **Idempotent**: All operations skip existing resources (users, groups, memberships). Subscriptions use `UpdateAssignment` which handles create/upgrade/downgrade automatically.
+- **Parallel**: `reset-password`, `kiro_subscribe.py`, and `kiro_unsubscribe.py` support `--workers` for parallel execution (default: 5).
 - **No browser required**: All operations use direct AWS API calls with SigV4 signing.
-- **Internal APIs**: `reset-password` uses `SWBUPService.UpdatePassword` (service: `userpool`). `kiro_subscribe.py` uses `AmazonQDeveloperService.CreateAssignment` (service: `q`). `export-subscriptions` uses `AWSZornControlPlaneService.ListUserSubscriptions` (service: `user-subscriptions`). These are internal AWS APIs discovered via network traffic analysis.
+- **Internal APIs**: 
+  - `reset-password` uses `SWBUPService.UpdatePassword` (service: `userpool`)
+  - `kiro_subscribe.py` uses `AmazonQDeveloperService.UpdateAssignment` (service: `q`)
+  - `kiro_unsubscribe.py` uses `AmazonQDeveloperService.DeleteAssignment` (service: `q`)
+  - `export-subscriptions` uses `AWSZornControlPlaneService.ListUserSubscriptions` (service: `user-subscriptions`)
+  - These are internal AWS APIs discovered via network traffic analysis.
 
 ## Troubleshooting
 
@@ -313,7 +397,6 @@ python kiro_migrate.py --help
 | `No AWS Identity Center instance found` | Enable Identity Center in the account, or specify `--region` |
 | `ConflictException` on user creation | User already exists -- check the "skipped" count |
 | `AccessDeniedException` on Kiro subscription | Kiro is not enabled in the target account. Go to AWS Console > Kiro and complete the initial setup first |
-| `ConflictException` on Kiro subscription | User already subscribed to a tier |
 | `HTTP 403` | Check AWS credentials and IAM permissions |
 | User not found when using `--csv` | Username in CSV must match the username in Identity Center |
 | Invalid tier name | Use `pro`, `pro+`, `power` or `Kiro Pro`, `Kiro Pro+`, `Kiro Power` |

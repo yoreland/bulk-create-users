@@ -2,12 +2,16 @@
 """
 Bulk Subscribe Users to Kiro Tiers
 
-Calls the AmazonQDeveloperService.CreateAssignment API to subscribe
-AWS Identity Center users to Kiro plans (Pro, Pro+, Power).
+Calls the AmazonQDeveloperService.UpdateAssignment API to subscribe,
+upgrade, or downgrade AWS Identity Center users to Kiro plans (Pro, Pro+, Power).
+
+UpdateAssignment handles both new subscriptions and changes to existing subscriptions,
+so a single API call can create, upgrade, or downgrade as needed.
 
 Usage:
   python kiro_subscribe.py --csv users.csv --region us-east-1
   python kiro_subscribe.py --report report.json --tier pro --region us-east-1
+  python kiro_subscribe.py --csv users.csv --tier "pro+" --region us-east-1  # Upgrades existing subscriptions
 """
 
 import argparse
@@ -71,7 +75,7 @@ def resolve_tier(raw: str) -> tuple[str | None, str]:
 # AWS API
 # ---------------------------------------------------------------------------
 
-def create_assignment(
+def update_assignment(
     principal_id: str,
     subscription_type: str,
     credentials,
@@ -80,7 +84,11 @@ def create_assignment(
     max_retries: int = 5,
 ) -> tuple[bool, str]:
     """
-    Call AmazonQDeveloperService.CreateAssignment to subscribe a user or group.
+    Call AmazonQDeveloperService.UpdateAssignment to subscribe, upgrade, or downgrade a user or group.
+
+    UpdateAssignment works for both new subscriptions and modifying existing ones:
+    - If the user has no subscription -> creates a new subscription
+    - If the user has a different subscription -> upgrades or downgrades to the new tier
 
     Retries with exponential backoff on ThrottlingException (HTTP 429).
     Returns (success, error_message).
@@ -93,13 +101,14 @@ def create_assignment(
     })
     headers = {
         "Content-Type": "application/x-amz-json-1.0",
-        "X-Amz-Target": "AmazonQDeveloperService.CreateAssignment",
+        "X-Amz-Target": "AmazonQDeveloperService.UpdateAssignment",
     }
 
     for attempt in range(max_retries + 1):
         request = botocore.awsrequest.AWSRequest(
             method="POST", url=url, data=body, headers=headers,
         )
+        # Note: SigV4 service must be 'q' not 'codewhisperer'
         signer = botocore.auth.SigV4Auth(credentials, "q", region)
         signer.add_auth(request)
 
@@ -301,7 +310,7 @@ Examples:
     failed: list[tuple[str, str]] = []
 
     def _subscribe(user: dict) -> tuple[str, bool, str]:
-        ok, err = create_assignment(
+        ok, err = update_assignment(
             user["user_id"], user["subscription_type"], credentials, args.region,
         )
         return user["username"], ok, err
